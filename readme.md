@@ -11,3 +11,5 @@ This project monitors temperature and humidity using an Arduino Uno R4 Wi-Fi and
 1. Upload `arduino_code.ino` to your Arduino board.
 2. Deploy PHP scripts to your web server.
 3. Set up the SQL database using `database_schema.sql`.
+
+use server : https://www.mamp.info/en/downloads/
