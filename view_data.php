@@ -30,9 +30,6 @@ while ($row = $result->fetch_assoc()) {
     $index++;
 }
 
-// Reverse the order to display oldest first in the table and charts
-$readings = array_reverse($readings);
-
 // Filter every 30 minutes for the additional line graph
 $sql_30_minutes = "SELECT id, temperature, humidity, timestamp FROM readings WHERE MINUTE(timestamp) = 0 ORDER BY timestamp ASC";
 $result_30_minutes = $conn->query($sql_30_minutes);
@@ -47,146 +44,166 @@ while ($row = $result_30_minutes->fetch_assoc()) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Sensor Readings</title>
+    <title>IoT Sensor Dashboard</title>
+    <!-- Add Bootstrap CSS for responsive design -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 20px;
-            padding: 20px;
             background-color: #f4f4f9;
-            color: #333;
+            margin: 0;
+            padding: 0;
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-        }
-        table, th, td {
-            border: 1px solid #ddd;
-        }
-        th, td {
-            text-align: left;
-            padding: 8px;
-        }
-        th {
-            background-color: darkblue;
-            color: white;
-        }
-        tr:nth-child(even) {
-            background-color: lightblue;
+        .container {
+            margin-top: 20px;
         }
         h1 {
             text-align: center;
+            margin-bottom: 30px;
+        }
+        .alert {
+            font-size: 0.9rem;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <h1>Sensor Data Readings</h1>
-    <?php if (count($readings) > 0): ?>
+    <div class="container">
+        <h1>IoT Sensor Dashboard</h1>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Temperature (°C)</th>
-                    <th>Humidity (%)</th>
-                    <th>Timestamp</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($readings as $row): ?>
+        <!-- Filters Section -->
+        <div class="mb-3">
+            <h4>Filter Data</h4>
+            <form method="GET" action="">
+                <label for="startDate">Start Date:</label>
+                <input type="date" name="startDate" id="startDate">
+                <label for="endDate">End Date:</label>
+                <input type="date" name="endDate" id="endDate">
+                <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+            </form>
+        </div>
+
+        <?php
+        // Database credentials
+        $host = '127.0.0.1'; 
+        $db = 'sensor_data'; 
+        $user = 'root'; 
+        $pass = 'root'; 
+        $port = 8889; 
+
+        // Connect to the database
+        $conn = new mysqli($host, $user, $pass, $db, $port);
+
+        // Check connection
+        if ($conn->connect_error) {
+            die("Database connection failed: " . $conn->connect_error);
+        }
+
+        // Fetch filtered data if date range is provided
+        $query = "SELECT id, temperature, humidity, timestamp FROM readings";
+        if (isset($_GET['startDate']) && isset($_GET['endDate'])) {
+            $startDate = $_GET['startDate'];
+            $endDate = $_GET['endDate'];
+            $query .= " WHERE DATE(timestamp) BETWEEN '$startDate' AND '$endDate'";
+        }
+        $query .= " ORDER BY timestamp DESC";
+
+        $result = $conn->query($query);
+        $readings = [];
+        while ($row = $result->fetch_assoc()) {
+            $readings[] = $row;
+        }
+        ?>
+
+        <?php if (count($readings) > 0): ?>
+            <!-- Data Table -->
+            <table class="table table-striped table-bordered">
+                <thead class="table-dark">
                     <tr>
-                        <td><?php echo htmlspecialchars($row['id']); ?></td>
-                        <td><?php echo htmlspecialchars($row['temperature']); ?></td>
-                        <td><?php echo htmlspecialchars($row['humidity']); ?></td>
-                        <td><?php echo htmlspecialchars($row['timestamp']); ?></td>
+                        <th>ID</th>
+                        <th>Temperature (°C)</th>
+                        <th>Humidity (%)</th>
+                        <th>Timestamp</th>
+                        <th>Status</th>
                     </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    <?php foreach ($readings as $row): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($row['id']); ?></td>
+                            <td><?php echo htmlspecialchars($row['temperature']); ?></td>
+                            <td><?php echo htmlspecialchars($row['humidity']); ?></td>
+                            <td><?php echo htmlspecialchars($row['timestamp']); ?></td>
+                            <td>
+                                <?php if ($row['temperature'] > 30 || $row['humidity'] > 70): ?>
+                                    <span class="alert alert-danger">Alert</span>
+                                <?php else: ?>
+                                    <span class="alert alert-success">Normal</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
 
-        <h2>Visualized Data</h2>
-        <canvas id="temperatureChart" width="400" height="200"></canvas>
-        <canvas id="humidityChart" width="400" height="200"></canvas>
-        <h2>Temperature and Humidity Trends (Every 30 Minutes)</h2>
-        <canvas id="trendChart" width="400" height="200"></canvas>
+            <!-- Charts Section -->
+            <h2>Visualized Data</h2>
+            <div class="row">
+                <div class="col-md-6">
+                    <canvas id="temperatureChart"></canvas>
+                </div>
+                <div class="col-md-6">
+                    <canvas id="humidityChart"></canvas>
+                </div>
+            </div>
 
-        <script>
-            // Pass the PHP data to JavaScript
-            const data = <?php echo json_encode($readings); ?>;
-            const data30Minutes = <?php echo json_encode($readings_30_minutes); ?>;
+            <script>
+                // Pass PHP data to JavaScript
+                const data = <?php echo json_encode($readings); ?>;
 
-            // Extract data for main graphs
-            const labels = data.map(reading => reading.timestamp);
-            const temperatures = data.map(reading => parseFloat(reading.temperature));
-            const humidities = data.map(reading => parseFloat(reading.humidity));
+                // Prepare chart data
+                const labels = data.map(reading => reading.timestamp);
+                const temperatures = data.map(reading => parseFloat(reading.temperature));
+                const humidities = data.map(reading => parseFloat(reading.humidity));
 
-            // Extract data for the 30-minute trend graph
-            const trendLabels = data30Minutes.map(reading => reading.timestamp);
-            const trendTemperatures = data30Minutes.map(reading => parseFloat(reading.temperature));
-            const trendHumidities = data30Minutes.map(reading => parseFloat(reading.humidity));
-
-            // Main temperature graph
-            new Chart(document.getElementById('temperatureChart'), {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Temperature (°C)',
-                        data: temperatures,
-                        borderColor: 'rgba(255, 99, 132, 1)',
-                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                    }]
-                }
-            });
-
-            // Main humidity graph
-            new Chart(document.getElementById('humidityChart'), {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Humidity (%)',
-                        data: humidities,
-                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                        borderColor: 'rgba(54, 162, 235, 1)',
-                    }]
-                }
-            });
-
-            // Combined temperature and humidity trend graph
-            new Chart(document.getElementById('trendChart'), {
-                type: 'line',
-                data: {
-                    labels: trendLabels,
-                    datasets: [
-                        {
+                // Temperature Chart
+                new Chart(document.getElementById('temperatureChart'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
                             label: 'Temperature (°C)',
-                            data: trendTemperatures,
+                            data: temperatures,
                             borderColor: 'rgba(255, 99, 132, 1)',
                             backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                        },
-                        {
+                        }]
+                    }
+                });
+
+                // Humidity Chart
+                new Chart(document.getElementById('humidityChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
                             label: 'Humidity (%)',
-                            data: trendHumidities,
-                            borderColor: 'rgba(54, 162, 235, 1)',
+                            data: humidities,
                             backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                        }
-                    ]
-                }
-            });
-        </script>
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                        }]
+                    }
+                });
+            </script>
+        <?php else: ?>
+            <p>No data available for the selected range or in the database.</p>
+        <?php endif; ?>
 
-        <a href="download_csv.php" class="btn">Download CSV</a>
+        <?php $conn->close(); ?>
+    </div>
 
-
-    <?php else: ?>
-        <p>No data available in the database.</p>
-    <?php endif; ?>
-
-    <?php $conn->close(); ?>
+    <!-- Add Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+
